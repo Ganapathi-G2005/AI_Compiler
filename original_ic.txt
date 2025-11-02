@@ -1,20 +1,122 @@
 
-alloc arr, 20
-x = 10
-y = 20
-i = 0
+alloc arr, 40
+a = 10
+b = 20
+
+if (0 == 1) GOTO L0 else GOTO L1
 
 LABEL L0:
+c = 1
+d = 2
+e = 3
+i = 0
 
-if NOT (i < 5) GOTO L1
-t0 = i + 1
-i = t0
-t1 = x * y
-t2 = t1 + i
-t3 = i * 4
-t4 = &arr
-t5 = t4 + t3
-*t5 = t2
-JUMP to L0
+LABEL L2:
+
+if NOT (i < 10) GOTO L3
+t0 = i * 10
+t1 = i * 4
+t2 = &arr
+t3 = t2 + t1
+*t3 = t0
+
+if (i > 5) GOTO L4 else GOTO L5
+
+LABEL L4:
+t5 = i * 4
+t6 = &arr
+t7 = t6 + t5
+t8 = *t7
+t4 = t8 / 2
+t9 = i * 4
+t10 = &arr
+t11 = t10 + t9
+*t11 = t4
+GOTO L6
+
+LABEL L5:
+t13 = i * 4
+t14 = &arr
+t15 = t14 + t13
+t16 = *t15
+t12 = t16 * 2
+t17 = i * 4
+t18 = &arr
+t19 = t18 + t17
+*t19 = t12
+
+LABEL L6:
+t20 = i + 1
+i = t20
+JUMP to L2
+
+LABEL L3:
+GOTO L7
 
 LABEL L1:
+t21 = a + b
+c = t21
+t22 = a * b
+d = t22
+t23 = c - d
+e = t23
+
+LABEL L7:
+t24 = a + b
+f = t24
+t25 = a * b
+g = t25
+
+if (100 < 10) GOTO L8 else GOTO L9
+
+LABEL L8:
+h = 1
+i = 2
+j = 3
+k = 4
+l = 5
+m = 6
+n = 7
+o = 8
+p = 9
+q = 10
+r = 11
+s = 12
+t = 13
+u = 14
+v = 15
+w = 16
+x = 17
+y = 18
+z = 19
+GOTO L10
+
+LABEL L9:
+
+LABEL L10:
+t26 = e + f
+t27 = t26 + g
+h = t27
+
+if (50 > 100) GOTO L11 else GOTO L12
+
+LABEL L11:
+a = 100
+b = 200
+c = 300
+d = 400
+e = 500
+f = 600
+g = 700
+h = 800
+i = 900
+j = 1000
+GOTO L13
+
+LABEL L12:
+t28 = h * 2
+i = t28
+t29 = h / 2
+j = t29
+
+LABEL L13:

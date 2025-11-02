@@ -16,6 +16,9 @@ from pathlib import Path
 # Import our existing feature extraction system
 from ir_feature_extractor import IRFeatureExtractor, generate_ir_from_c_file
 
+# Import optimizer
+from optimizer import optimize_ir
+
 # Suppress sklearn warnings about feature names
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
@@ -161,6 +164,9 @@ class OptimizationPredictor:
             # Display results
             self.display_results(results, show_details)
             
+            # Automatically apply the predicted optimization
+            self._apply_optimization(results["predicted_optimization"])
+            
             return results
             
         except Exception as e:
@@ -176,6 +182,31 @@ class OptimizationPredictor:
         # Just print the optimization name
         predicted_opt = results["predicted_optimization"]
         print(predicted_opt)
+    
+    def _apply_optimization(self, optimization_name):
+        """
+        Apply the predicted optimization to the original IR.
+        
+        Args:
+            optimization_name: Name of the optimization to apply
+        """
+        try:
+            # Check if original_ic.txt exists
+            if not os.path.exists('original_ic.txt'):
+                print("Warning: original_ic.txt not found. Optimization skipped.")
+                return
+            
+            # Apply optimization
+            success = optimize_ir('original_ic.txt', [optimization_name], 'optimized_ic.txt')
+            
+            if success:
+                # Print Done message as requested
+                print("Done")
+            else:
+                print("Warning: Optimization failed.")
+                
+        except Exception as e:
+            print(f"Warning: Could not apply optimization: {e}")
     
     def explain_prediction(self, optimization, features):
         """Provide explanation for why this optimization was recommended."""
