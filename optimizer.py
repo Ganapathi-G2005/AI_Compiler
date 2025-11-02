@@ -664,13 +664,11 @@ class Optimizer:
             return
 
         # --- Analysis Pass ---
-        # We perform analysis on self.lines and build a plan of modifications.
-        # We don't modify self.lines directly.
-        
-        lines_to_add_in_preheader = {} # Map pre_header_idx -> [list of init lines]
+        lines_to_add_post_preheader = {} # Map pre_header_idx -> [list of init lines]
         lines_to_replace = {}          # Map line_idx -> new_line
         lines_to_add_post_iv_step = {} # Map iv_step_idx -> [list of step lines]
-        indices_to_delete = set()      # Not used here, but good for other refactors
+        indices_to_delete = set()      # Not used
+        optimizations_found = False
 
         for loop_header_idx, loop_end_idx in loops:
             iv_data = self._find_induction_variable(loop_header_idx, loop_end_idx, self.lines)
@@ -695,12 +693,9 @@ class Optimizer:
             
             if iv_init_val is None:
                 continue # Cannot optimize
-
-            # We are making a change
-            self.modified = True
             
-            if pre_header_idx not in lines_to_add_in_preheader:
-                lines_to_add_in_preheader[pre_header_idx] = []
+            if pre_header_idx not in lines_to_add_post_preheader:
+                lines_to_add_post_preheader[pre_header_idx] = []
             if iv_step_line_idx not in lines_to_add_post_iv_step:
                 lines_to_add_post_iv_step[iv_step_line_idx] = []
 
@@ -718,52 +713,99 @@ class Optimizer:
                     new_init_val = iv_init_val * const_val
                     new_step_val = iv_step_val * const_val
                     
-                    lines_to_add_in_preheader[pre_header_idx].append(f"{new_temp_var} = {new_init_val}")
+                    lines_to_add_post_preheader[pre_header_idx].append(f"{new_temp_var} = {new_init_val}")
                     lines_to_add_post_iv_step[iv_step_line_idx].append(f"{new_temp_var} = {new_temp_var} + {new_step_val}")
                     lines_to_replace[i] = f"{result_var} = {new_temp_var}"
+                    optimizations_found = True
         
         # --- Rebuilding Pass ---
-        if not self.modified:
-            return
+        
+        if not optimizations_found:
+            return # No optimizations were found, so we are done.
 
+        self.modified = True
+        
         final_lines = []
         for i, line in enumerate(self.lines):
-            # 1. Add pre-header lines (if any)
-            if i in lines_to_add_in_preheader:
-                final_lines.extend(lines_to_add_in_preheader[i])
-            
-            # 2. Replace or keep the current line
+            # 1. Replace or keep the current line
             if i in lines_to_replace:
                 final_lines.append(lines_to_replace[i])
             elif i not in indices_to_delete:
                 final_lines.append(line)
             
-            # 3. Add new step lines (if any)
+            # 2. Add pre-header lines *after* the pre-header line
+            if i in lines_to_add_post_preheader:
+                final_lines.extend(lines_to_add_post_preheader[i])
+            
+            # 3. Add new step lines *after* the IV step line
             if i in lines_to_add_post_iv_step:
                 final_lines.extend(lines_to_add_post_iv_step[i])
 
         self.lines = final_lines
 
     def _find_induction_variable(self, loop_start: int, loop_end: int, lines: List[str]) -> Optional[Tuple[str, int, int]]:
-        """Finds the primary induction variable (e.g., i = i + 1) in a loop."""
+        """
+        Finds the primary induction variable (e.g., i = i + 1 or i = t1; t1 = i + 1)
+        Returns: (var_name, step_value, line_index_of_IV_UPDATE)
+        """
+        
+        # 1. Find the loop condition to identify the IV
+        iv_name = None
         for i in range(loop_start, loop_end + 1):
             if i >= len(lines): break
             line = lines[i]
-            # Pattern: i = i + 1
-            match = re.match(r'^\s*(\w+)\s*=\s*\1\s*\+\s*(-?\d+)\s*$', line)
-            if match:
-                var, step = match.groups()
-                end_line = lines[loop_end]
-                if f"({var} <" in end_line or f"({var} >" in end_line or f"({var} !=" in end_line:
-                    return var, int(step), i
-            # Pattern: i = i - 1
-            match = re.match(r'^\s*(\w+)\s*=\s*\1\s*-\s*(-?\d+)\s*$', line)
-            if match:
-                var, step = match.groups()
-                end_line = lines[loop_end]
-                if f"({var} <" in end_line or f"({var} >" in end_line or f"({var} !=" in end_line:
-                    return var, -int(step), i
-        return None
+            # Match 'if NOT (i < ...)' or 'if (i < ...)'
+            condition_match = re.search(r'if\s+(?:NOT\s+)?\(?(\w+)\s*[<>=!]', line)
+            
+            if condition_match:
+                iv_name = condition_match.group(1)
+                break
+        
+        if not iv_name:
+            return None # Can't find loop variable
+
+        # 2. Now find where this IV is updated inside the loop
+        for i in range(loop_start, loop_end + 1):
+            if i >= len(lines): break
+            line = lines[i]
+            
+            # Simple update: i = i + 1
+            simple_match = re.match(rf'^\s*{re.escape(iv_name)}\s*=\s*{re.escape(iv_name)}\s*\+\s*(-?\d+)\s*$', line)
+            if simple_match:
+                step_val = int(simple_match.group(1))
+                return iv_name, step_val, i # (var, step, line_index_of_update)
+
+            # Simple update: i = i - 1
+            simple_match = re.match(rf'^\s*{re.escape(iv_name)}\s*=\s*{re.escape(iv_name)}\s*-\s*(-?\d+)\s*$', line)
+            if simple_match:
+                step_val = -int(simple_match.group(1))
+                return iv_name, step_val, i
+
+            # Two-step update: i = t5
+            temp_assign_match = re.match(rf'^\s*{re.escape(iv_name)}\s*=\s*(\w+)\s*$', line)
+            if temp_assign_match:
+                temp_var_name = temp_assign_match.group(1)
+                if temp_var_name.isdigit(): continue # Skip i = 5
+                
+                # Now look *backwards* from this line to find how temp_var_name was defined
+                for j in range(i - 1, loop_start - 1, -1):
+                    temp_def_line = lines[j]
+                    
+                    # Look for t5 = i + 1
+                    step_match = re.match(rf'^\s*{re.escape(temp_var_name)}\s*=\s*{re.escape(iv_name)}\s*\+\s*(-?\d+)\s*$', temp_def_line)
+                    if step_match:
+                        step_val = int(step_match.group(1))
+                        # Return the index of the *final* update (i = t5)
+                        return iv_name, step_val, i 
+
+                    # Look for t5 = i - 1
+                    step_match = re.match(rf'^\s*{re.escape(temp_var_name)}\s*=\s*{re.escape(iv_name)}\s*-\s*(-?\d+)\s*$', temp_def_line)
+                    if step_match:
+                        step_val = -int(step_match.group(1))
+                        # Return the index of the *final* update (i = t5)
+                        return iv_name, step_val, i 
+
+        return None # No matching induction variable update found
 
     def _identify_loops(self) -> List[Tuple[int, int]]:
         """Identify loop boundaries (header index, end index)."""

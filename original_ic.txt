@@ -1,122 +1,101 @@
 
-alloc arr, 40
-a = 10
-b = 20
-
-if (0 == 1) GOTO L0 else GOTO L1
+alloc matrix, 400
+alloc arr, 400
+width = 10
+height = 10
+t0 = 5 + 1
+a = t0
+t1 = 10 * 2
+b = t1
+t2 = 100 / 4
+c = t2
+t3 = 50 - 20
+d = t3
+i = 0
 
 LABEL L0:
-c = 1
-d = 2
-e = 3
-i = 0
+
+if NOT (i < height) GOTO L1
+t4 = i * 10
+base_row_1 = t4
+t5 = i * 4
+base_row_2 = t5
+t6 = i * 2
+base_row_3 = t6
+t7 = i * 8
+base_row_4 = t7
+j = 0
 
 LABEL L2:
 
-if NOT (i < 10) GOTO L3
-t0 = i * 10
-t1 = i * 4
-t2 = &arr
-t3 = t2 + t1
-*t3 = t0
-
-if (i > 5) GOTO L4 else GOTO L5
-
-LABEL L4:
-t5 = i * 4
-t6 = &arr
-t7 = t6 + t5
-t8 = *t7
-t4 = t8 / 2
-t9 = i * 4
-t10 = &arr
-t11 = t10 + t9
-*t11 = t4
-GOTO L6
-
-LABEL L5:
-t13 = i * 4
-t14 = &arr
-t15 = t14 + t13
-t16 = *t15
-t12 = t16 * 2
-t17 = i * 4
-t18 = &arr
-t19 = t18 + t17
-*t19 = t12
-
-LABEL L6:
-t20 = i + 1
-i = t20
+if NOT (j < width) GOTO L3
+t8 = base_row_1 + j
+idx = t8
+t9 = j * 3
+val1 = t9
+t10 = j * 5
+val2 = t10
+t11 = j * 7
+val3 = t11
+t12 = j * 9
+val4 = t12
+t13 = val1 + val2
+t14 = t13 + val3
+t15 = t14 + val4
+t16 = t15 + base_row_2
+t17 = t16 + base_row_3
+t18 = t17 + base_row_4
+t19 = idx * 4
+t20 = &matrix
+t21 = t20 + t19
+*t21 = t18
+t22 = j + 1
+j = t22
 JUMP to L2
 
 LABEL L3:
-GOTO L7
+t23 = i + 1
+i = t23
+JUMP to L0
 
 LABEL L1:
-t21 = a + b
-c = t21
-t22 = a * b
-d = t22
-t23 = c - d
-e = t23
+k = 0
 
-LABEL L7:
-t24 = a + b
-f = t24
-t25 = a * b
-g = t25
+LABEL L4:
 
-if (100 < 10) GOTO L8 else GOTO L9
+if NOT (k < 100) GOTO L5
+t24 = k * 5
+l = t24
+t25 = k * 10
+m = t25
+t26 = k * 15
+n = t26
+t27 = k * 20
+o = t27
+t28 = l + m
+t29 = t28 + n
+t30 = t29 + o
+t31 = t30 + a
+t32 = t31 + b
+t33 = t32 + c
+t34 = t33 + d
+p = t34
+t35 = k * 4
+t36 = &arr
+t37 = t36 + t35
+*t37 = p
+t38 = k + 1
+k = t38
+JUMP to L4
 
-LABEL L8:
-h = 1
-i = 2
-j = 3
-k = 4
-l = 5
-m = 6
-n = 7
-o = 8
-p = 9
-q = 10
-r = 11
-s = 12
-t = 13
-u = 14
-v = 15
-w = 16
-x = 17
-y = 18
-z = 19
-GOTO L10
-
-LABEL L9:
-
-LABEL L10:
-t26 = e + f
-t27 = t26 + g
-h = t27
-
-if (50 > 100) GOTO L11 else GOTO L12
-
-LABEL L11:
-a = 100
-b = 200
-c = 300
-d = 400
-e = 500
-f = 600
-g = 700
-h = 800
-i = 900
-j = 1000
-GOTO L13
-
-LABEL L12:
-t28 = h * 2
-i = t28
-t29 = h / 2
-j = t29
-
-LABEL L13:
+LABEL L5:
+q = 0
+r = 0
+s = 0
+t = 0
+u = 0
+v = 0
+w = 0
+x = 0
+y = 0
+z = 0
