@@ -10,13 +10,18 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 import os
 import sys
 import re
+import subprocess
+import time
+import threading
 from optimization_predictor import OptimizationPredictor
+from build_executables import build_executable
+from compare_runtime import run_executable
 
 class OptimizationGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("C Compiler Optimization Analyzer")
-        self.root.geometry("1400x950")
+        self.root.geometry("1600x950")  # Wider to accommodate side-by-side stats and runtime
         
         # Instruction costs (in cycles/units)
         self.instruction_costs = {
@@ -51,17 +56,18 @@ class OptimizationGUI:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(2, weight=2)  # Give more weight to statistics
+        main_frame.columnconfigure(1, weight=1)  # For side-by-side stats and runtime
+        main_frame.rowconfigure(2, weight=2)  # Give more weight to statistics/runtime
         main_frame.rowconfigure(3, weight=3)  # Code comparison area
         
         # Title
         title_label = ttk.Label(main_frame, text="Compiler Optimization Analyzer", 
                                font=("Arial", 16, "bold"))
-        title_label.grid(row=0, column=0, pady=(0, 10))
+        title_label.grid(row=0, column=0, columnspan=2, pady=(0, 10))
         
         # File selection frame
         file_frame = ttk.Frame(main_frame)
-        file_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        file_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         file_frame.columnconfigure(1, weight=1)
         
         ttk.Label(file_frame, text="C File:").grid(row=0, column=0, padx=(0, 5))
@@ -75,9 +81,16 @@ class OptimizationGUI:
         analyze_btn = ttk.Button(file_frame, text="Analyze", command=self.analyze_code)
         analyze_btn.grid(row=0, column=3)
         
-        # Statistics frame - using grid layout for better space utilization
-        stats_frame = ttk.LabelFrame(main_frame, text="Optimization Statistics", padding="10")
-        stats_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        # Statistics and Runtime Comparison frames - side by side
+        stats_runtime_frame = ttk.Frame(main_frame)
+        stats_runtime_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        stats_runtime_frame.columnconfigure(0, weight=1)
+        stats_runtime_frame.columnconfigure(1, weight=1)
+        stats_runtime_frame.rowconfigure(0, weight=1)
+        
+        # Statistics frame - left side
+        stats_frame = ttk.LabelFrame(stats_runtime_frame, text="Optimization Statistics", padding="10")
+        stats_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
         stats_frame.columnconfigure(0, weight=1)
         stats_frame.rowconfigure(0, weight=1)
         
@@ -85,9 +98,24 @@ class OptimizationGUI:
         self.stats_text = tk.Text(stats_frame, height=12, font=("Consolas", 10), wrap=tk.WORD)
         self.stats_text.pack(fill=tk.BOTH, expand=True)
         
+        # Runtime Comparison frame - right side
+        runtime_frame = ttk.LabelFrame(stats_runtime_frame, text="Runtime Performance Comparison", padding="10")
+        runtime_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))
+        runtime_frame.columnconfigure(0, weight=1)
+        runtime_frame.rowconfigure(0, weight=1)
+        
+        # Runtime display
+        self.runtime_text = tk.Text(runtime_frame, height=12, font=("Consolas", 10), wrap=tk.WORD)
+        self.runtime_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Status label for building/running executables
+        self.runtime_status = ttk.Label(runtime_frame, text="Click 'Analyze' to build and compare executables", 
+                                        font=("Arial", 9), foreground="gray")
+        self.runtime_status.pack(pady=(5, 0))
+        
         # Comparison frame (side by side)
         comparison_frame = ttk.Frame(main_frame)
-        comparison_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        comparison_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         comparison_frame.columnconfigure(0, weight=1)
         comparison_frame.columnconfigure(1, weight=1)
         comparison_frame.rowconfigure(0, weight=1)
@@ -114,7 +142,7 @@ class OptimizationGUI:
         
         # Optimization info frame
         info_frame = ttk.LabelFrame(main_frame, text="Optimization Applied", padding="10")
-        info_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
+        info_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E))
         info_frame.columnconfigure(0, weight=1)
         
         self.info_text = tk.Text(info_frame, height=4, font=("Arial", 10))
@@ -141,7 +169,9 @@ class OptimizationGUI:
             self.original_text.delete(1.0, tk.END)
             self.optimized_text.delete(1.0, tk.END)
             self.stats_text.delete(1.0, tk.END)
+            self.runtime_text.delete(1.0, tk.END)
             self.info_text.delete(1.0, tk.END)
+            self.runtime_status.config(text="Building executables...", foreground="blue")
             
             # Run optimization predictor
             predictor = OptimizationPredictor()
@@ -223,15 +253,16 @@ COST BREAKDOWN (per instruction type):
             
             # Display optimization info
             opt_name = results['predicted_optimization']
-            confidence = results.get('confidence', 0)
             
             info_display = f"""
 Optimization Applied: {opt_name}
-Confidence: {confidence:.1f}%
 
 {self.get_optimization_description(opt_name)}
 """
             self.info_text.insert(1.0, info_display)
+            
+            # Build executables and compare runtime (in a separate thread to avoid blocking)
+            self.build_and_compare_runtime()
             
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {str(e)}")
@@ -358,6 +389,164 @@ Confidence: {confidence:.1f}%
         }
         
         return descriptions.get(optimization_name, "Optimization applied to improve code efficiency.")
+    
+    def build_and_compare_runtime(self):
+        """Build executables and compare their runtime performance."""
+        # Run in a separate thread to avoid blocking the GUI
+        thread = threading.Thread(target=self._build_and_compare_thread, daemon=True)
+        thread.start()
+    
+    def _build_and_compare_thread(self):
+        """Thread function to build executables and compare runtime."""
+        try:
+            # Update status
+            self.root.after(0, lambda: self.runtime_status.config(
+                text="Building executables...", foreground="blue"))
+            self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+            self.root.after(0, lambda: self.runtime_text.insert(1.0, "Building executables...\n\nPlease wait..."))
+            
+            # Check if IR files exist
+            if not os.path.exists('original_ic.txt') or not os.path.exists('optimized_ic.txt'):
+                self.root.after(0, lambda: self.runtime_status.config(
+                    text="Error: IR files not found", foreground="red"))
+                self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+                self.root.after(0, lambda: self.runtime_text.insert(
+                    1.0, "ERROR: original_ic.txt or optimized_ic.txt not found!\n\nPlease run the analysis first."))
+                return
+            
+            # Build original.exe
+            self.root.after(0, lambda: self.runtime_status.config(
+                text="Building original.exe...", foreground="blue"))
+            original_success = build_executable('original_ic.txt', 'original.exe', 'original.c')
+            
+            if not original_success:
+                self.root.after(0, lambda: self.runtime_status.config(
+                    text="Error: Failed to build original.exe", foreground="red"))
+                self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+                self.root.after(0, lambda: self.runtime_text.insert(
+                    1.0, "ERROR: Failed to build original.exe\n\nPlease check if you have a C compiler installed (gcc/clang)."))
+                return
+            
+            # Build optimized.exe
+            self.root.after(0, lambda: self.runtime_status.config(
+                text="Building optimized.exe...", foreground="blue"))
+            optimized_success = build_executable('optimized_ic.txt', 'optimized.exe', 'optimized.c')
+            
+            if not optimized_success:
+                self.root.after(0, lambda: self.runtime_status.config(
+                    text="Error: Failed to build optimized.exe", foreground="red"))
+                self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+                self.root.after(0, lambda: self.runtime_text.insert(
+                    1.0, "ERROR: Failed to build optimized.exe\n\nPlease check if you have a C compiler installed (gcc/clang)."))
+                return
+            
+            # Update status - running executables
+            self.root.after(0, lambda: self.runtime_status.config(
+                text="Running executables for comparison...", foreground="blue"))
+            self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+            self.root.after(0, lambda: self.runtime_text.insert(
+                1.0, "Executables built successfully!\n\nRunning performance tests...\n\nPlease wait..."))
+            
+            # Run performance comparison
+            iterations = 5  # Run each executable 5 times for accuracy
+            
+            original_time, original_success = run_executable('original.exe', iterations)
+            
+            if not original_success:
+                self.root.after(0, lambda: self.runtime_status.config(
+                    text="Error: Failed to run original.exe", foreground="red"))
+                self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+                self.root.after(0, lambda: self.runtime_text.insert(
+                    1.0, "ERROR: Failed to run original.exe\n\nThe executable may have crashed or timed out."))
+                return
+            
+            optimized_time, optimized_success = run_executable('optimized.exe', iterations)
+            
+            if not optimized_success:
+                self.root.after(0, lambda: self.runtime_status.config(
+                    text="Error: Failed to run optimized.exe", foreground="red"))
+                self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+                self.root.after(0, lambda: self.runtime_text.insert(
+                    1.0, "ERROR: Failed to run optimized.exe\n\n"
+                    "The executable timed out (likely infinite loop) or crashed.\n\n"
+                    "Possible causes:\n"
+                    "  • Infinite loop in the optimized code\n"
+                    "  • Missing loop counter increment\n"
+                    "  • Incorrect optimization that removed necessary code\n\n"
+                    "Please check the generated optimized.c file for issues.\n"
+                    "You may need to review the optimization process."))
+                return
+            
+            # Calculate comparison metrics
+            if optimized_time < original_time:
+                speedup = original_time / optimized_time
+                improvement = ((original_time - optimized_time) / original_time) * 100
+                result_icon = "✓"
+                result_color = "green"
+                result_text = "Optimization improved performance!"
+            elif optimized_time > original_time:
+                slowdown = optimized_time / original_time
+                degradation = ((optimized_time - original_time) / original_time) * 100
+                result_icon = "⚠"
+                result_color = "orange"
+                result_text = "Optimized version is slower"
+            else:
+                result_icon = "≈"
+                result_color = "blue"
+                result_text = "Execution times are essentially the same"
+                speedup = 1.0
+                improvement = 0.0
+            
+            # Format runtime display
+            runtime_display = f"""
+═══════════════════════════════════════════════════════════════════════════════
+                          RUNTIME PERFORMANCE REPORT
+═══════════════════════════════════════════════════════════════════════════════
+
+EXECUTION TIME (averaged over {iterations} runs):
+───────────────────────────────────────────────────────────────────────────────
+  Original Executable:    {original_time * 1000:>10.4f} ms
+  Optimized Executable:  {optimized_time * 1000:>10.4f} ms
+───────────────────────────────────────────────────────────────────────────────
+
+PERFORMANCE COMPARISON:
+───────────────────────────────────────────────────────────────────────────────
+  {result_icon} {result_text}
+"""
+            
+            if optimized_time < original_time:
+                runtime_display += f"""  Speedup Factor:        {speedup:>10.2f}x faster
+  Performance Improvement: {improvement:>10.2f}% faster
+"""
+            elif optimized_time > original_time:
+                runtime_display += f"""  Slowdown Factor:       {slowdown:>10.2f}x slower
+  Performance Degradation: {degradation:>10.2f}% slower
+"""
+            else:
+                runtime_display += f"""  Speedup Factor:        {speedup:>10.2f}x
+"""
+            
+            runtime_display += """───────────────────────────────────────────────────────────────────────────────
+
+NOTE: Runtime measurements may vary due to system load and other factors.
+      Multiple runs are averaged to provide more accurate results.
+═══════════════════════════════════════════════════════════════════════════════
+"""
+            
+            # Update GUI with results
+            self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+            self.root.after(0, lambda: self.runtime_text.insert(1.0, runtime_display))
+            self.root.after(0, lambda: self.runtime_status.config(
+                text="Runtime comparison complete", foreground=result_color))
+            
+        except Exception as e:
+            error_msg = f"Error during runtime comparison: {str(e)}"
+            self.root.after(0, lambda: self.runtime_status.config(
+                text="Error occurred", foreground="red"))
+            self.root.after(0, lambda: self.runtime_text.delete(1.0, tk.END))
+            self.root.after(0, lambda: self.runtime_text.insert(1.0, f"ERROR: {error_msg}"))
+            import traceback
+            traceback.print_exc()
 
 
 def main():

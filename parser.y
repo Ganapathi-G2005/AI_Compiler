@@ -49,7 +49,7 @@
 	char buff[100];
 	char errors[10][100];
 	char reserved[11][10] = {"int", "float", "char", "void", "if", "else", "for", "while", "main", "return", "include"};
-	char icg[5000][100];
+	char icg[1000000][100];
 
 
 %}

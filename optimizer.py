@@ -553,7 +553,7 @@ class Optimizer:
                 expr = match.group(1)
                 reads = re.findall(r'\b([a-zA-Z_]\w*)\b', expr)
                 used_in_line.update(reads)
-
+            
             # 3. Store to memory: *R1 = R2 (reads R1 and R2)
             match = re.match(r'^\s*\*\s*(\w+)\s*=\s*([\w\d.-]+)', line)
             if match:
@@ -570,10 +570,17 @@ class Optimizer:
                 if defined_var in live_vars:
                     # This assignment is live because its result is used later
                     is_live = True
+                    # CRITICAL FIX: Add RHS variables to live set BEFORE removing defined_var
+                    # This ensures that variables used to compute the live variable are also kept
+                    live_vars.update(used_in_line)
                     live_vars.remove(defined_var)
-            
-            # Add all used variables to the live set for the next iteration
-            live_vars.update(used_in_line)
+                else:
+                    # Even if the result is dead, we still need to track RHS variables
+                    # for proper liveness propagation
+                    live_vars.update(used_in_line)
+            else:
+                # For non-assignment lines, just update live vars with used variables
+                live_vars.update(used_in_line)
             
             if is_live:
                 final_lines.append(line)
@@ -934,6 +941,140 @@ class Optimizer:
         self.lines = final_lines
 
 
+def validate_and_fix_loops(ir_content: str, original_ir_content: str) -> str:
+    """
+    Validate optimized IR for missing loop increments and fix them by restoring from original.
+    
+    Args:
+        ir_content: Optimized IR content
+        original_ir_content: Original IR content before optimization
+        
+    Returns:
+        Fixed IR content
+    """
+    opt_lines = [line.strip() for line in ir_content.split('\n')]
+    orig_lines = [line.strip() for line in original_ir_content.split('\n')]
+    
+    # Build label maps to identify loop boundaries
+    opt_label_map = {}
+    orig_label_map = {}
+    
+    for i, line in enumerate(opt_lines):
+        match = re.match(r'^LABEL\s+(\w+):', line, re.IGNORECASE)
+        if match:
+            opt_label_map[match.group(1)] = i
+    
+    for i, line in enumerate(orig_lines):
+        match = re.match(r'^LABEL\s+(\w+):', line, re.IGNORECASE)
+        if match:
+            orig_label_map[match.group(1)] = i
+    
+    # Find loops and check for missing increments
+    fixed_lines = opt_lines.copy()
+    changes_made = []
+    
+    for label_name, label_idx in opt_label_map.items():
+        if label_name not in orig_label_map:
+            continue
+            
+        # Find the loop body: from label to the next label or JUMP back
+        loop_end_idx = len(opt_lines)
+        jump_back_line = None
+        
+        # Look for JUMP back to this label
+        for i in range(label_idx + 1, len(opt_lines)):
+            jump_match = re.match(r'^JUMP\s+to\s+' + re.escape(label_name), opt_lines[i], re.IGNORECASE)
+            if jump_match:
+                jump_back_line = i
+                # Find next label after the jump (loop end)
+                for j in range(i + 1, len(opt_lines)):
+                    if re.match(r'^LABEL\s+\w+:', opt_lines[j], re.IGNORECASE):
+                        loop_end_idx = j
+                        break
+                break
+        
+        if jump_back_line is None:
+            continue
+        
+        # Check for condition that uses a variable (e.g., "if NOT (i < 3)")
+        condition_match = None
+        loop_var = None
+        
+        for i in range(label_idx, min(loop_end_idx, jump_back_line + 1)):
+            # Pattern: if NOT (var < num) or if NOT (var > num)
+            cond_match = re.match(r'^if\s+NOT\s+\((\w+)\s*([<>])\s*(\d+)\)\s+GOTO\s+\w+', opt_lines[i], re.IGNORECASE)
+            if cond_match:
+                var_name, op, num = cond_match.groups()
+                loop_var = var_name
+                condition_match = (i, var_name, op, num)
+                break
+        
+        if not loop_var or condition_match is None:
+            continue
+        
+        # Check if loop_var is modified in the loop body before the JUMP
+        var_modified = False
+        for i in range(condition_match[0] + 1, jump_back_line):
+            # Check for assignments to loop_var: var = ... or temp = var + 1; var = temp
+            assign_match = re.match(r'^(\w+)\s*=\s*(.+)', opt_lines[i])
+            if assign_match:
+                lhs = assign_match.group(1)
+                rhs = assign_match.group(2)
+                
+                # Direct assignment: i = something
+                if lhs == loop_var:
+                    var_modified = True
+                    break
+                
+                # Check for pattern: temp = var + 1 followed by var = temp
+                if i + 1 < jump_back_line:
+                    next_assign = re.match(r'^(\w+)\s*=\s*(\w+)', opt_lines[i + 1])
+                    if next_assign and next_assign.group(1) == loop_var and next_assign.group(2) == lhs:
+                        # Check if rhs increments var
+                        if re.search(rf'\b{re.escape(loop_var)}\s*\+\s*1\b', rhs) or re.search(rf'\b1\s*\+\s*{re.escape(loop_var)}\b', rhs):
+                            var_modified = True
+                            break
+        
+        # If variable not modified, restore increment from original
+        if not var_modified:
+            # Find corresponding loop in original
+            orig_label_idx = orig_label_map[label_name]
+            orig_jump_back = None
+            
+            for i in range(orig_label_idx + 1, len(orig_lines)):
+                jump_match = re.match(r'^JUMP\s+to\s+' + re.escape(label_name), orig_lines[i], re.IGNORECASE)
+                if jump_match:
+                    orig_jump_back = i
+                    break
+            
+            if orig_jump_back is not None:
+                # Look for increment pattern before the jump in original
+                for i in range(orig_jump_back - 1, orig_label_idx, -1):
+                    # Check for: temp = var + 1
+                    incr_match = re.match(r'^(\w+)\s*=\s*' + re.escape(loop_var) + r'\s*\+\s*1', orig_lines[i], re.IGNORECASE)
+                    if incr_match:
+                        temp_var = incr_match.group(1)
+                        # Check if next line is: var = temp
+                        if i + 1 < len(orig_lines):
+                            assign_match = re.match(r'^' + re.escape(loop_var) + r'\s*=\s*' + re.escape(temp_var), orig_lines[i + 1], re.IGNORECASE)
+                            if assign_match:
+                                # Restore these two lines before the jump in optimized
+                                insert_pos = jump_back_line
+                                fixed_lines.insert(insert_pos, f"{temp_var} = {loop_var} + 1")
+                                fixed_lines.insert(insert_pos + 1, f"{loop_var} = {temp_var}")
+                                changes_made.append(f"Restored missing increment for loop variable '{loop_var}' in loop {label_name}")
+                                # Update jump_back_line for potential additional fixes
+                                jump_back_line += 2
+                                break
+    
+    if changes_made:
+        print("  WARNING: Fixed missing loop increments:", file=sys.stderr)
+        for change in changes_made:
+            print(f"    - {change}", file=sys.stderr)
+    
+    return '\n'.join(fixed_lines)
+
+
 def optimize_ir(input_file: str, optimizations: List[str], output_file: str = "optimized_ic.txt"):
     """
     Main function to optimize intermediate code.
@@ -948,9 +1089,14 @@ def optimize_ir(input_file: str, optimizations: List[str], output_file: str = "o
         with open(input_file, 'r', encoding='utf-8') as f:
             ir_content = f.read()
         
+        original_ir_content = ir_content  # Keep original for validation
+        
         # Create optimizer and apply optimizations
         optimizer = Optimizer(ir_content)
         optimized_ir = optimizer.optimize(optimizations)
+        
+        # Validate and fix missing loop increments
+        optimized_ir = validate_and_fix_loops(optimized_ir, original_ir_content)
         
         # Write output file
         with open(output_file, 'w', encoding='utf-8') as f:
