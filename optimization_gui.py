@@ -16,7 +16,7 @@ class OptimizationGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("C Compiler Optimization Analyzer")
-        self.root.geometry("1400x900")
+        self.root.geometry("1400x950")
         
         # Instruction costs (in cycles/units)
         self.instruction_costs = {
@@ -51,7 +51,8 @@ class OptimizationGUI:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.rowconfigure(2, weight=2)  # Give more weight to statistics
+        main_frame.rowconfigure(3, weight=3)  # Code comparison area
         
         # Title
         title_label = ttk.Label(main_frame, text="Compiler Optimization Analyzer", 
@@ -74,13 +75,14 @@ class OptimizationGUI:
         analyze_btn = ttk.Button(file_frame, text="Analyze", command=self.analyze_code)
         analyze_btn.grid(row=0, column=3)
         
-        # Statistics frame
+        # Statistics frame - using grid layout for better space utilization
         stats_frame = ttk.LabelFrame(main_frame, text="Optimization Statistics", padding="10")
-        stats_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        stats_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         stats_frame.columnconfigure(0, weight=1)
+        stats_frame.rowconfigure(0, weight=1)
         
-        # Stats display
-        self.stats_text = tk.Text(stats_frame, height=8, font=("Courier", 10))
+        # Stats display with better font and more space
+        self.stats_text = tk.Text(stats_frame, height=12, font=("Consolas", 10), wrap=tk.WORD)
         self.stats_text.pack(fill=tk.BOTH, expand=True)
         
         # Comparison frame (side by side)
@@ -169,26 +171,53 @@ class OptimizationGUI:
             original_stats = self.calculate_statistics(original_ir)
             optimized_stats = self.calculate_statistics(optimized_ir)
             
-            # Display statistics
+            # Calculate improvement metrics
+            instr_reduction = original_stats['instruction_count'] - optimized_stats['instruction_count']
+            cost_savings = original_stats['total_cost'] - optimized_stats['total_cost']
+            cost_reduction_pct = ((1 - optimized_stats['total_cost']/original_stats['total_cost']) * 100) if original_stats['total_cost'] > 0 else 0
+            instr_reduction_pct = ((1 - optimized_stats['instruction_count']/original_stats['instruction_count']) * 100) if original_stats['instruction_count'] > 0 else 0
+            
+            # Calculate average cost per instruction
+            orig_avg_cost = original_stats['total_cost'] / original_stats['instruction_count'] if original_stats['instruction_count'] > 0 else 0
+            opt_avg_cost = optimized_stats['total_cost'] / optimized_stats['instruction_count'] if optimized_stats['instruction_count'] > 0 else 0
+            
+            # Display statistics with improved formatting
             stats_display = f"""
-┌─────────────────────────────────────────────────────────────┐
-│                    OPTIMIZATION STATISTICS                   │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Original IR:                                                │
-│    • Instructions: {original_stats['instruction_count']:>5}                          │
-│    • Total Cost:   {original_stats['total_cost']:>5} cycles                        │
-│                                                              │
-│  Optimized IR:                                               │
-│    • Instructions: {optimized_stats['instruction_count']:>5}                          │
-│    • Total Cost:   {optimized_stats['total_cost']:>5} cycles                        │
-│                                                              │
-│  Improvement:                                                │
-│    • Instructions Reduced: {original_stats['instruction_count'] - optimized_stats['instruction_count']:>5}    │
-│    • Cost Savings:         {original_stats['total_cost'] - optimized_stats['total_cost']:>5} cycles    │
-│    • Cost Reduction:       {((1 - optimized_stats['total_cost']/original_stats['total_cost']) * 100) if original_stats['total_cost'] > 0 else 0:>5.1f}%           │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+═══════════════════════════════════════════════════════════════════════════════
+                          OPTIMIZATION STATISTICS REPORT
+═══════════════════════════════════════════════════════════════════════════════
+
+ORIGINAL INTERMEDIATE CODE:
+───────────────────────────────────────────────────────────────────────────────
+  Total Instructions:       {original_stats['instruction_count']:>6}
+  Total Execution Cost:     {original_stats['total_cost']:>6} cycles
+  Average Cost/Instruction: {orig_avg_cost:>6.2f} cycles
+───────────────────────────────────────────────────────────────────────────────
+
+OPTIMIZED INTERMEDIATE CODE:
+───────────────────────────────────────────────────────────────────────────────
+  Total Instructions:       {optimized_stats['instruction_count']:>6}
+  Total Execution Cost:     {optimized_stats['total_cost']:>6} cycles
+  Average Cost/Instruction: {opt_avg_cost:>6.2f} cycles
+───────────────────────────────────────────────────────────────────────────────
+
+PERFORMANCE IMPROVEMENT:
+───────────────────────────────────────────────────────────────────────────────
+  Instructions Removed:     {instr_reduction:>6}  ({instr_reduction_pct:>5.1f}% reduction)
+  Execution Cost Saved:     {cost_savings:>6} cycles  ({cost_reduction_pct:>5.1f}% reduction)
+  
+  Efficiency Gain:          {cost_reduction_pct:>5.1f}% faster execution
+  Code Size Reduction:      {instr_reduction_pct:>5.1f}% smaller code
+───────────────────────────────────────────────────────────────────────────────
+
+COST BREAKDOWN (per instruction type):
+───────────────────────────────────────────────────────────────────────────────
+  Addition/Subtraction:      2 cycles each
+  Multiplication:           4 cycles each
+  Division/Modulo:          6 cycles each
+  Assignment/Load/Store:    1 cycle each
+  Control Flow (jump/goto): 1 cycle each
+═══════════════════════════════════════════════════════════════════════════════
 """
             self.stats_text.insert(1.0, stats_display)
             

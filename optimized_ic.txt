@@ -1,27 +1,14 @@
-alloc arr, 24
-t0 = 100
-t1 = 20
-a = 20
-t2 = 30
-t3 = 60
-b = 60
-i = 0
-LABEL L0:
-if NOT (i < 6) GOTO L1
-t4 = i + 1
-i = t4
-if (i < 3) GOTO L2 else GOTO L3
-LABEL L2:
-t5 = i * 4
-t6 = &arr
-t7 = t6 + t5
-*t7 = a
-GOTO L4
-LABEL L3:
-t8 = i * 4
-t9 = &arr
-t10 = t9 + t8
-*t10 = b
-LABEL L4:
 JUMP to L0
+LABEL L0:
+GOTO L2
 LABEL L1:
+LABEL L2:
+JUMP to L4
+LABEL L4:
+LABEL L5:
+JUMP to L7
+LABEL L7:
+LABEL L8:
+JUMP to L10
+LABEL L10:
+LABEL L11:

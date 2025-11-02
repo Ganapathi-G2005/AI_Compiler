@@ -1,35 +1,79 @@
 
-alloc arr, 24
-t0 = 25 * 4
-t1 = t0 / 5
-a = t1
-t2 = 10 + 20
-t3 = t2 * 2
-b = t3
-i = 0
+a = 10
+b = 20
+t0 = a + b
+c = t0
+
+if (10 > 5) GOTO L0 else GOTO L1
 
 LABEL L0:
-
-if NOT (i < 6) GOTO L1
-t4 = i + 1
-i = t4
-
-if (i < 3) GOTO L2 else GOTO L3
-
-LABEL L2:
-t5 = i * 4
-t6 = &arr
-t7 = t6 + t5
-*t7 = a
-GOTO L4
-
-LABEL L3:
-t8 = i * 4
-t9 = &arr
-t10 = t9 + t8
-*t10 = b
-
-LABEL L4:
-JUMP to L0
+d = 1
+GOTO L2
 
 LABEL L1:
+d = 2
+
+LABEL L2:
+
+if (1 == 0) GOTO L3 else GOTO L4
+
+LABEL L3:
+e = 100
+t1 = e * 2
+f = t1
+t2 = f + e
+g = t2
+t3 = g / 3
+h = t3
+t4 = h - 10
+i = t4
+GOTO L5
+
+LABEL L4:
+e = 1
+f = 2
+
+LABEL L5:
+
+if (200 < 100) GOTO L6 else GOTO L7
+
+LABEL L6:
+g = 100
+h = 200
+i = 300
+t5 = g + h
+t6 = t5 + i
+j = t6
+t7 = j * 2
+k = t7
+GOTO L8
+
+LABEL L7:
+g = 3
+h = 4
+
+LABEL L8:
+
+if (0 > 1) GOTO L9 else GOTO L10
+
+LABEL L9:
+i = 1
+j = 2
+k = 3
+l = 4
+m = 5
+n = 6
+GOTO L11
+
+LABEL L10:
+i = 5
+j = 6
+k = 7
+
+LABEL L11:
+t8 = a + c
+l = t8
+t9 = b + d
+m = t9
+t10 = e + f
+n = t10
