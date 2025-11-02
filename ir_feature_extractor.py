@@ -795,9 +795,10 @@ def generate_ir_from_c_file(c_file_path):
         
         # Run the compiler with input redirection and output capture
         # Assuming your compiler executable is named 'compiler.exe'
+        compiler_exe = 'compiler.exe' if os.name == 'nt' else './compiler.exe'
         with open(c_file_path, 'r') as input_file:
             result = subprocess.run(
-                ['./compiler.exe'], 
+                [compiler_exe], 
                 stdin=input_file,
                 capture_output=True,
                 text=True,
@@ -830,6 +831,14 @@ def generate_ir_from_c_file(c_file_path):
             ir_lines.pop()
             
         ir_content = '\n'.join(ir_lines)
+        
+        # Save IR to original_ic.txt file
+        try:
+            with open('original_ic.txt', 'w') as ir_file:
+                ir_file.write(ir_content)
+            print(f"Intermediate code saved to original_ic.txt")
+        except Exception as e:
+            print(f"Warning: Could not save IR to file: {e}")
         
         # Clean up temporary file
         try:

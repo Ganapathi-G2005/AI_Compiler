@@ -1,0 +1,20 @@
+
+alloc arr, 20
+x = 10
+y = 20
+i = 0
+
+LABEL L0:
+
+if NOT (i < 5) GOTO L1
+t0 = i + 1
+i = t0
+t1 = x * y
+t2 = t1 + i
+t3 = i * 4
+t4 = &arr
+t5 = t4 + t3
+*t5 = t2
+JUMP to L0
+
+LABEL L1:
